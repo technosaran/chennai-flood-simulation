@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-10-22T09:37:43.808821+00:00",
+  "model_sha256": "334fb7fe646f09f819a34fa6547c5d8de87a0a6e25cfe47a60e52668666cae69",
+  "artifact_name": "demand_ensemble_v2.json",
+  "dataset_sha256": "c550e2f718f4570291e9a150da16b3144cf3559373710a65210a08c3a5c92e7a",
+  "source": "synthetic held-out labels; not real-world accuracy",
+  "holdout_event": "2023_Michaung",
+  "rows": 28132,
+  "tree_count": 160,
+  "ml_rows": 28128,
+  "rule_fallback_rows": 4,
+  "runtime_mae_units": {
+    "water_litres": 96.08197959618884,
+    "food_rations": 79.8461645101655,
+    "medical_kits": 11.333071235603589
+  },
+  "runtime_baseline_mae_units": {
+    "water_litres": 3827.227718967723,
+    "food_rations": 1945.0221719038816,
+    "medical_kits": 99.78233115313466
+  },
+  "interval_coverage_ml_rows": {
+    "water_litres": 0.9058589306029579,
+    "food_rations": 0.9027659271899886,
+    "medical_kits": 0.904330204778157
+  },
+  "evaluation_seconds": 21.32924239995191,
+  "repeated_conditions_inference": {
+    "uncached": {
+      "median_ms": 0.23124998551793396,
+      "p95_ms": 0.5305000231601298
+    },
+    "cached": {
+      "median_ms": 0.002800021320581436,
+      "p95_ms": 0.00300002284348011
+    }
+  }
+}

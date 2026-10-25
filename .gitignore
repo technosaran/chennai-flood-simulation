@@ -22,9 +22,11 @@ __pycache__/
 env/
 venv/
 .venv/
+backend/storage/
 
 # Next.js build & cache
 .next/
+.next-dev/
 out/
 build/
 dist/
@@ -53,3 +55,14 @@ Thumbs.db
 
 # Redundant nested scaffold
 crisis-intelligence-platform/
+
+# Large raw datasets (> 100MB; gzipped version chennai_osm_roads.json.gz is tracked)
+backend/app/data/chennai_osm_roads.json
+
+# Tool artifacts & dependencies
+.review/
+
+# Temporary chart and test artifacts
+.chart-data-*/
+test_word.docx
+test_word.pdf

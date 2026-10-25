@@ -467,3 +467,123 @@ class SpatialGridIndex:
                 best_item = item
 
         return best_item
+
+
+def simplify_polyline_douglas_peucker(
+    coords: List[List[float]], tolerance_meters: float = 5.0
+) -> List[List[float]]:
+    """
+    Douglas-Peucker line simplification algorithm.
+    Recursively decimates intermediate points that deviate less than tolerance_meters
+    from the chord connecting the endpoints.
+    """
+    if len(coords) <= 2:
+        return list(coords)
+
+    # Find the point with the maximum perpendicular distance from the line segment
+    first = coords[0]
+    last = coords[-1]
+    max_dist = 0.0
+    index = 0
+
+    for i in range(1, len(coords) - 1):
+        pt = coords[i]
+        d = point_to_segment_distance_meters(pt[0], pt[1], first[0], first[1], last[0], last[1])
+        if d > max_dist:
+            max_dist = d
+            index = i
+
+    # If max distance is greater than epsilon, recursively simplify
+    if max_dist > tolerance_meters:
+        left_simplified = simplify_polyline_douglas_peucker(coords[: index + 1], tolerance_meters)
+        right_simplified = simplify_polyline_douglas_peucker(coords[index:], tolerance_meters)
+        return left_simplified[:-1] + right_simplified
+    else:
+        return [first, last]
+
+
+def compute_convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """
+    Computes the 2D Convex Hull of a set of points using Andrew's Monotone Chain algorithm.
+    Time complexity: O(N log N). Returns vertices in counter-clockwise order.
+    """
+    pts = sorted(set(points))
+    if len(pts) <= 2:
+        return list(pts)
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    # Build lower hull
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+
+    # Build upper hull
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+
+    # Concatenate lower and upper hulls (excluding duplicates at boundaries)
+    return lower[:-1] + upper[:-1]
+
+
+def polygon_area_sq_meters(coords: List[List[float]]) -> float:
+    """
+    Calculates spherical/planar projected area of a polygon ring using Green's Theorem / Shoelace Formula.
+    Returns area in square meters.
+    """
+    if not coords or len(coords) < 3:
+        return 0.0
+
+    # Project to Cartesian meters relative to the first vertex
+    ref_lat, ref_lon = coords[0][0], coords[0][1]
+    projected = [latlon_to_meters(pt[0], pt[1], ref_lat, ref_lon) for pt in coords]
+
+    area = 0.0
+    n = len(projected)
+    for i in range(n):
+        j = (i + 1) % n
+        area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1]
+
+    return abs(area) / 2.0
+
+
+def polygon_centroid(coords: List[List[float]]) -> Tuple[float, float]:
+    """
+    Calculates center of mass / geometric centroid of a polygon ring.
+    Returns (lat, lon).
+    """
+    if not coords:
+        return (0.0, 0.0)
+    if len(coords) < 3:
+        return (coords[0][0], coords[0][1])
+
+    ref_lat, ref_lon = coords[0][0], coords[0][1]
+    projected = [latlon_to_meters(pt[0], pt[1], ref_lat, ref_lon) for pt in coords]
+
+    signed_area = 0.0
+    cx = 0.0
+    cy = 0.0
+    n = len(projected)
+
+    for i in range(n):
+        j = (i + 1) % n
+        factor = (projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1])
+        signed_area += factor
+        cx += (projected[i][0] + projected[j][0]) * factor
+        cy += (projected[i][1] + projected[j][1]) * factor
+
+    if abs(signed_area) < 1e-9:
+        # Collinear or degenerate fallback: arithmetic mean
+        return (sum(pt[0] for pt in coords) / n, sum(pt[1] for pt in coords) / n)
+
+    signed_area *= 0.5
+    cx /= (6.0 * signed_area)
+    cy /= (6.0 * signed_area)
+
+    return meters_to_latlon(cx, cy, ref_lat, ref_lon)

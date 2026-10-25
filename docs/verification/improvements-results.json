@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-06",
+  "backend_tests": {"passed": 51, "seconds": 4.01},
+  "strict_live_integration_tests": {"passed": 95, "seconds": 40.25},
+  "frontend": {"production_build": "passed", "typecheck": "passed", "eslint": "passed"},
+  "browser": {
+    "proxy_health": "ok, portable ensemble loaded",
+    "simulation": "passed",
+    "chart_selects_timeline_hour": true,
+    "manual_allocation": "passed",
+    "export_depot_balances_match_backend": true,
+    "export_has_prediction_intervals": true,
+    "default_scenario_snapshots": 7,
+    "default_scenario_compute_ms": 442.9,
+    "mobile_viewport_width": 390,
+    "mobile_document_width": 390,
+    "page_exceptions": 0
+  },
+  "engine_benchmark": {
+    "scope": "engine only, no ML/advisory/HTTP/startup",
+    "circle_12h_before_seconds": [1.8527, 2.9278, 2.9757],
+    "circle_12h_after_seconds": [0.621, 0.3562, 0.3735],
+    "polygon_12h_before_seconds": [2.1005, 2.2911, 2.0],
+    "polygon_12h_after_seconds": [0.1895, 0.1906, 0.1943]
+  },
+  "model_training_data": "synthetic",
+  "real_flood_accuracy": "unverified"
+}

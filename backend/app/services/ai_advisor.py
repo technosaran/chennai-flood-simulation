@@ -479,12 +479,79 @@ class AIAdvisorService:
                 "recommendation_ta": rec_ta,
             })
 
+        # Calculate TOPSIS Multi-Criteria Decision Analysis scores across the 15 wards
+        topsis_matrix = []
+        for w in ranked_wards:
+            topsis_matrix.append([
+                w["peak_flood_depth_m"],
+                w["mean_flood_depth_m"],
+                w["density_per_sqkm"],
+                w["runoff_coefficient"],
+                w["ground_elevation_m"],
+            ])
+        # Criteria weights: [Peak Depth: 0.35, Mean Depth: 0.20, Density: 0.20, Runoff: 0.15, Elevation: 0.10]
+        weights = [0.35, 0.20, 0.20, 0.15, 0.10]
+        # Benefit criteria (True) vs Cost criteria (False: lower elevation = higher hazard)
+        is_benefit = [True, True, True, True, False]
+        topsis_scores = self.compute_topsis_scores(topsis_matrix, weights, is_benefit)
+        for idx, score in enumerate(topsis_scores):
+            ranked_wards[idx]["topsis_closeness_score"] = score
+
         # Sort descending by vulnerability index
         ranked_wards.sort(key=lambda x: x["vulnerability_index"], reverse=True)
         for idx, item in enumerate(ranked_wards):
             item["vulnerability_rank"] = idx + 1
 
         return ranked_wards
+
+    @staticmethod
+    def compute_topsis_scores(
+        matrix: List[List[float]],
+        weights: List[float],
+        is_benefit: List[bool],
+    ) -> List[float]:
+        """
+        Technique for Order of Preference by Similarity to Ideal Solution (TOPSIS).
+        Pure Python multi-criteria decision making algorithm.
+        Returns closeness coefficient C_i in [0.0, 1.0] for each alternative.
+        """
+        if not matrix or not matrix[0]:
+            return []
+
+        m = len(matrix)
+        n = len(weights)
+
+        # 1. Vector normalization
+        col_norms = []
+        for j in range(n):
+            sum_sq = sum(matrix[i][j] ** 2 for i in range(m))
+            col_norms.append(math.sqrt(sum_sq) if sum_sq > 0 else 1.0)
+
+        # 2. Weighted normalized matrix
+        v = [[(matrix[i][j] / col_norms[j]) * weights[j] for j in range(n)] for i in range(m)]
+
+        # 3. Determine ideal positive (A+) and ideal negative (A-) solutions
+        a_pos = []
+        a_neg = []
+        for j in range(n):
+            vals = [v[i][j] for i in range(m)]
+            if is_benefit[j]:
+                a_pos.append(max(vals))
+                a_neg.append(min(vals))
+            else:
+                a_pos.append(min(vals))
+                a_neg.append(max(vals))
+
+        # 4. Calculate Euclidean distances to ideal solutions and closeness coefficient
+        closeness_scores = []
+        for i in range(m):
+            d_pos = math.sqrt(sum((v[i][j] - a_pos[j]) ** 2 for j in range(n)))
+            d_neg = math.sqrt(sum((v[i][j] - a_neg[j]) ** 2 for j in range(n)))
+            total_d = d_pos + d_neg
+            c_i = (d_neg / total_d) if total_d > 0 else 0.5
+            closeness_scores.append(round(c_i, 3))
+
+        return closeness_scores
 
     def compute_casualty_prevention_indicators(
         self,
@@ -584,6 +651,9 @@ class AIAdvisorService:
                 "details": f"Divert civilian traffic around {len(bottleneck_roads)} flooded arterial road sections.",
             },
         ]
+        directives = [directive for directive, relevant in zip(
+            directives, (total_trapped > 0, bool(infrastructure_threats), bool(bottleneck_roads))
+        ) if relevant]
 
         return {
             "total_stranded_citizens": total_trapped,
@@ -627,10 +697,18 @@ class AIAdvisorService:
                     min_dist_km = d_km
                     best_dz = dz
 
-            # Fallback if all standard drop zones within range are submerged
+            # Never recommend a submerged site just because it is elevated.
             if not best_dz:
-                best_dz = CHENNAI_AIRLIFT_DROP_ZONES[2]  # St. Thomas Mount Ridge Peak (24m elevation)
-                min_dist_km = haversine(c_lat, c_lon, best_dz["coordinates"][0], best_dz["coordinates"][1])
+                assigned_airlifts.append({
+                    "cluster_id": cluster.get("cluster_id", "UNK"),
+                    "cluster_name": cluster.get("name", "Unknown Area"),
+                    "stranded_population": trapped_pop,
+                    "assigned_drop_zone_id": None,
+                    "drop_zone_coordinates": None,
+                    "status": "no_safe_drop_zone",
+                    "reason": "All modeled drop zones are inundated; field assessment is required.",
+                })
+                continue
 
             flight_time_min = round((min_dist_km / 140.0) * 60.0 + 3.0, 1)  # 140 km/h cruising + 3 min hover
 
@@ -640,6 +718,7 @@ class AIAdvisorService:
             trauma_kits = max(10, int(trapped_pop * 0.03))
 
             assigned_airlifts.append({
+                "status": "modeled_option",
                 "cluster_id": cluster.get("cluster_id", "UNK"),
                 "cluster_name": cluster.get("name", "Unknown Area"),
                 "cluster_location": [c_lat, c_lon],
@@ -675,6 +754,16 @@ class AIAdvisorService:
         formatted for public warning sirens, mobile cell broadcasts, and news tickers.
         """
         now_str = datetime.now(timezone.utc).strftime("%d-%b-%Y %H:%M UTC")
+
+        if overall_severity in ("None", "Advisory"):
+            en = f"SIMULATION ONLY ({now_str}): {overall_severity} scenario. Modeled peak depth {peak_observed_depth:.2f}m. No emergency warning is issued by this application."
+            ta = f"மாதிரி உருவகப்படுத்தல் மட்டும் ({now_str}): கணிக்கப்பட்ட நீர்மட்டம் {peak_observed_depth:.2f} மீ. இது அதிகாரப்பூர்வ அவசர எச்சரிக்கை அல்ல."
+            return {
+                "siren_broadcast_english": en, "siren_broadcast_tamil": ta,
+                "mobile_sms_alert_english": en, "mobile_sms_alert_tamil": ta,
+                "press_bulletin_english": {"headline": en, "timestamp": now_str, "issued_by": "Chennai Flood Lab simulation"},
+                "press_bulletin_tamil": {"headline": ta, "timestamp": now_str, "issued_by": "Chennai Flood Lab simulation"},
+            }
 
         critical_ward_names_en = [w["zone_name"] for w in top_vulnerable_wards[:3]]
         critical_ward_names_ta = [
@@ -718,7 +807,7 @@ class AIAdvisorService:
         bulletin_en = {
             "headline": f"CHENNAI FLOOD ADVISORY BULLETIN: {overall_severity.upper()} LEVEL INUNDATION",
             "timestamp": now_str,
-            "issued_by": "Greater Chennai Corporation & State Disaster Management Authority",
+            "issued_by": "Chennai Flood Lab — sample simulation bulletin",
             "critical_sectors": critical_ward_names_en,
             "peak_depth_meters": round(peak_observed_depth, 2),
             "citizens_isolated_count": total_stranded,
@@ -740,7 +829,7 @@ class AIAdvisorService:
         bulletin_ta = {
             "headline": f"சென்னை வெள்ள அபாய அறிக்கை: {overall_severity.upper()} நிலை வெள்ளப்பெருக்கு",
             "timestamp": now_str,
-            "issued_by": "பெருநகர சென்னை மாநகராட்சி & தமிழ்நாடு பேரிடர் மேலாண்மை ஆணையம்",
+            "issued_by": "Chennai Flood Lab — மாதிரி அறிக்கை",
             "critical_sectors": critical_ward_names_ta,
             "peak_depth_meters": round(peak_observed_depth, 2),
             "citizens_isolated_count": total_stranded,
@@ -760,12 +849,160 @@ class AIAdvisorService:
         }
 
         return {
-            "siren_broadcast_english": siren_en,
-            "siren_broadcast_tamil": siren_ta,
-            "mobile_sms_alert_english": sms_en,
-            "mobile_sms_alert_tamil": sms_ta,
+            "siren_broadcast_english": "SIMULATION ONLY — SAMPLE BULLETIN. " + siren_en,
+            "siren_broadcast_tamil": "மாதிரி உருவகப்படுத்தல் மட்டும். " + siren_ta,
+            "mobile_sms_alert_english": "SIMULATION ONLY. " + sms_en,
+            "mobile_sms_alert_tamil": "மாதிரி உருவகப்படுத்தல் மட்டும். " + sms_ta,
             "press_bulletin_english": bulletin_en,
             "press_bulletin_tamil": bulletin_ta,
+        }
+
+    def compute_mcdm_topsis_rankings(
+        self,
+        ward_rankings: List[Dict[str, Any]],
+        casualty_data: Dict[str, Any],
+        isolated_clusters: List[Dict[str, Any]],
+        shelter_allocations: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        IEEE Multi-Criteria Decision Making (MCDM) using TOPSIS
+        (Technique for Order of Preference by Similarity to Ideal Solution).
+        Ranks zones / sectors for emergency relief convoy and rescue deployment.
+
+        Criteria:
+        1. Flood Inundation Depth (Benefit: higher depth = more critical, weight 0.25)
+        2. Stranded / Vulnerable Population (Benefit: more citizens = more critical, weight 0.30)
+        3. Road Inaccessibility / Isolation Score (Benefit: higher isolation = more critical, weight 0.20)
+        4. Elevation Vulnerability (Cost: lower elevation = higher water accumulation risk, weight 0.15)
+        5. Baseline Vulnerability Multiplier (Benefit: historical drainage vulnerability, weight 0.10)
+        """
+        weights = [0.25, 0.30, 0.20, 0.15, 0.10]
+        criteria_types = ["benefit", "benefit", "benefit", "cost", "benefit"]
+
+        # Map ward_rankings by zone_number or zone_id
+        ward_map = {w["zone_number"]: w for w in ward_rankings}
+
+        # Identify isolated clusters count per zone (by nearest locality match)
+        isolated_count = len(isolated_clusters)
+
+        matrix = []
+        zone_entries = []
+
+        for z in CHENNAI_GCC_ZONES:
+            zn = z["zone_number"]
+            w_info = ward_map.get(zn, {})
+
+            flood_depth = float(w_info.get("peak_flood_depth_m", 0.0))
+            stranded_pop = float(w_info.get("estimated_affected_population", 0.0))
+            if stranded_pop == 0.0 and flood_depth > 0.0:
+                stranded_pop = float(z["population"]) * min(1.0, flood_depth / 2.0)
+
+            # Isolation factor: presence of severed routes or critical status
+            is_critical = w_info.get("risk_tier") == "CRITICAL"
+            is_high = w_info.get("risk_tier") == "HIGH"
+            isolation = 1.0 if is_critical else (0.6 if is_high else (0.2 if flood_depth > 0 else 0.05))
+
+            elevation = max(1.0, float(z.get("base_elevation_m", 3.0)))
+            baseline_v = float(z.get("baseline_vulnerability", 1.0))
+
+            row = [flood_depth, stranded_pop, isolation, elevation, baseline_v]
+            matrix.append(row)
+            zone_entries.append({
+                "zone_number": zn,
+                "zone_id": z["zone_id"],
+                "zone_name": z["name"],
+                "key_localities": z["key_localities"],
+                "drainage_basin": z["drainage_basin"],
+                "centroid": z["centroid"],
+                "raw_metrics": {
+                    "flood_depth_m": round(flood_depth, 2),
+                    "affected_population": int(stranded_pop),
+                    "isolation_factor": isolation,
+                    "elevation_m": elevation,
+                    "baseline_vulnerability": baseline_v,
+                },
+            })
+
+        num_zones = len(matrix)
+        num_crit = len(weights)
+
+        # Step 1: Calculate vector norm denominator for each criterion
+        norm_denoms = []
+        for j in range(num_crit):
+            ss = sum(matrix[i][j] ** 2 for i in range(num_zones))
+            norm_denoms.append(math.sqrt(ss) if ss > 1e-9 else 1.0)
+
+        # Step 2: Normalized weighted matrix
+        v_matrix = []
+        for i in range(num_zones):
+            v_row = []
+            for j in range(num_crit):
+                r_ij = matrix[i][j] / norm_denoms[j]
+                v_row.append(r_ij * weights[j])
+            v_matrix.append(v_row)
+
+        # Step 3: Determine positive-ideal (v_plus) and negative-ideal (v_minus)
+        v_plus = []
+        v_minus = []
+        for j in range(num_crit):
+            col_vals = [v_matrix[i][j] for i in range(num_zones)]
+            if criteria_types[j] == "benefit":
+                v_plus.append(max(col_vals))
+                v_minus.append(min(col_vals))
+            else:  # cost criterion
+                v_plus.append(min(col_vals))
+                v_minus.append(max(col_vals))
+
+        # Step 4: Compute Euclidean separation distances and closeness coefficient
+        ranked_zones = []
+        for i in range(num_zones):
+            d_plus = math.sqrt(sum((v_matrix[i][j] - v_plus[j]) ** 2 for j in range(num_crit)))
+            d_minus = math.sqrt(sum((v_matrix[i][j] - v_minus[j]) ** 2 for j in range(num_crit)))
+
+            denom = d_plus + d_minus
+            closeness = (d_minus / denom) if denom > 1e-9 else 0.50
+
+            # Priority tier classification
+            if closeness >= 0.65:
+                tier = "P1_IMMEDIATE_DISPATCH"
+                action = "Deploy NDRF swift-water rescue teams & direct heavy supply convoys immediately."
+            elif closeness >= 0.45:
+                tier = "P2_HIGH_PRIORITY"
+                action = "Pre-position relief rations, pumps, and utility vans at edge depot."
+            elif closeness >= 0.25:
+                tier = "P3_MODERATE_STANDBY"
+                action = "Monitor drainage channels; alert volunteer teams and medical centers."
+            else:
+                tier = "P4_ROUTINE_MONITORING"
+                action = "Normal precautionary surveillance; storm drains functional."
+
+            entry = zone_entries[i]
+            entry["topsis_score"] = round(closeness, 4)
+            entry["relative_closeness_pct"] = round(closeness * 100.0, 1)
+            entry["distance_to_ideal"] = round(d_plus, 4)
+            entry["distance_to_anti_ideal"] = round(d_minus, 4)
+            entry["priority_tier"] = tier
+            entry["recommended_action"] = action
+            ranked_zones.append(entry)
+
+        # Sort descending by TOPSIS score
+        ranked_zones.sort(key=lambda z: z["topsis_score"], reverse=True)
+        for rank_idx, item in enumerate(ranked_zones, 1):
+            item["dispatch_rank"] = rank_idx
+
+        return {
+            "methodology": "IEEE TOPSIS (Technique for Order Preference by Similarity to Ideal Solution)",
+            "criteria_weights": {
+                "inundation_depth": weights[0],
+                "stranded_population": weights[1],
+                "road_isolation": weights[2],
+                "elevation_risk": weights[3],
+                "baseline_vulnerability": weights[4],
+            },
+            "total_ranked_zones": len(ranked_zones),
+            "p1_critical_count": sum(1 for z in ranked_zones if z["priority_tier"] == "P1_IMMEDIATE_DISPATCH"),
+            "p2_high_count": sum(1 for z in ranked_zones if z["priority_tier"] == "P2_HIGH_PRIORITY"),
+            "rankings": ranked_zones,
         }
 
     def generate_comprehensive_advisory(
@@ -794,19 +1031,26 @@ class AIAdvisorService:
         )
 
         # 4. Bilingual Emergency Broadcasts
-        peak_depth = max([w["peak_flood_depth_m"] for w in ward_rankings] + [0.0])
+        peak_depth = max([w["peak_flood_depth_m"] for w in ward_rankings]
+                         + [z.get("peak_depth", 0.0) for z in step_zones_state] + [0.0])
         total_trapped = casualty_data["total_stranded_citizens"]
 
-        overall_severity = "Catastrophic" if peak_depth >= 1.20 else ("Severe" if peak_depth >= 0.60 else "Moderate")
+        overall_severity = ("Catastrophic" if peak_depth >= 1.20 else "Severe" if peak_depth >= 0.60
+                            else "Moderate" if peak_depth >= 0.15 else "Advisory" if peak_depth > 0 else "None")
         broadcasts = self.generate_bilingual_emergency_broadcasts(
             overall_severity, ward_rankings, peak_depth, total_trapped
+        )
+
+        # 5. IEEE TOPSIS Multi-Criteria Decision Making (MCDM) Priority Dispatch
+        mcdm_rankings = self.compute_mcdm_topsis_rankings(
+            ward_rankings, casualty_data, isolated_clusters, shelter_allocations
         )
 
         # ML Ensemble Demand Predictor status check
         ml_status = {
             "is_available": bool(self.ml_predictor and getattr(self.ml_predictor, "is_loaded", False)),
-            "model_type": "Deep Neural Network + XGBoost + Random Forest Ensemble" if (self.ml_predictor and getattr(self.ml_predictor, "is_loaded", False)) else "Sphere Humanitarian Standards (Hydrologic Fallback)",
-            "explainability": "SHAP Feature Attribution Active" if (self.ml_predictor and getattr(self.ml_predictor, "is_loaded", False)) else "Calibrated Physical Hydrologic Metrics",
+            "model_type": self.ml_predictor.metadata()["name"] if hasattr(self.ml_predictor, "metadata") else "Legacy ensemble or planning rules",
+            "explainability": "Scenario rules; demand model intervals available in inventory ledger",
         }
 
         return {
@@ -818,11 +1062,14 @@ class AIAdvisorService:
                 "critical_wards_count": len([w for w in ward_rankings if w["risk_tier"] == "CRITICAL"]),
                 "high_risk_wards_count": len([w for w in ward_rankings if w["risk_tier"] == "HIGH"]),
                 "total_stranded_citizens": total_trapped,
-                "airlift_sorties_required": len(airlift_assignments),
+                "airlift_sorties_required": sum(a["assigned_drop_zone_id"] is not None for a in airlift_assignments),
+                "clusters_without_safe_drop_zone": sum(a["assigned_drop_zone_id"] is None for a in airlift_assignments),
+                "p1_mcdm_dispatch_zones": mcdm_rankings["p1_critical_count"],
             },
             "ward_vulnerability_index": ward_rankings,
             "casualty_prevention_indicators": casualty_data,
             "optimal_airlift_drop_zones": airlift_assignments,
+            "mcdm_topsis_rankings": mcdm_rankings,
             "bilingual_emergency_broadcasts": broadcasts,
             "ml_decision_engine": ml_status,
         }

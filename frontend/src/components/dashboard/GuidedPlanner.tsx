@@ -1,0 +1,59 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import { rainfallMmPerHour } from '@/lib/rainfall';
+import { ArrowRight, ArrowLeft, Check, MapPin, CloudRain, Clock3, Play, Loader2, SlidersHorizontal } from 'lucide-react';
+import type { DisasterParameters, PresetScenario, SimulationResponse } from '@/lib/types';
+
+const rainfallRate = rainfallMmPerHour;
+
+export type PlannerStep = 1 | 2 | 3;
+export type ResultTab = 'summary' | 'supplies' | 'map';
+
+export function PlannerSteps({ step, hasResults, onSelect }: { step: PlannerStep; hasResults: boolean; onSelect: (step: PlannerStep) => void }) {
+  return <nav className="planner-steps" aria-label="Analysis progress">{['Choose a scenario', 'Review and run', 'Understand results'].map((label, index) => <button key={label} aria-current={step === index + 1 ? 'step' : undefined} disabled={index === 2 && !hasResults} onClick={() => onSelect((index + 1) as PlannerStep)}><span>{step > index + 1 ? <Check size={17} /> : index + 1}</span><strong>{label}</strong></button>)}</nav>;
+}
+
+const descriptions = [
+  'Explore flooding around Velachery and the Pallikaranai wetland.',
+  'Explore how a river surge could affect homes along the Adyar.',
+  'Explore coastal flooding around Ennore and North Chennai.',
+  'Explore flooding downstream of a modeled reservoir release.',
+  'Explore overflowing waterways around Mudichur and Tambaram.',
+  'Explore urban flooding in the busy T. Nagar neighbourhood.',
+];
+
+export function ScenarioSetup({ presets, selected, onSelect, parameters, onChange, map, advanced, busy, drawing, onReview }: {
+  presets: PresetScenario[]; selected: string | null; onSelect: (preset: PresetScenario) => void;
+  parameters: DisasterParameters; onChange: (parameters: DisasterParameters) => void;
+  map: ReactNode; advanced: ReactNode; busy: boolean; drawing: boolean; onReview: () => void;
+}) {
+  return <div className="guided-screen">
+    <div className="planner-heading"><span className="planner-eyebrow">FLOOD RESPONSE, ONE STEP AT A TIME</span><h1>Let’s build your flood scenario.</h1><p>Choose an example to get started. We’ll help you understand who could be affected and how to plan the response.</p></div>
+    <div className="setup-grid"><div className="space-y-6">
+      <section className="planner-card"><div className="section-heading"><span className="section-number">01</span><div><h2>Where would you like to explore?</h2><p>Modeled examples inspired by historical events, rather than reconstructions.</p></div></div>
+        <div className="preset-grid">{presets.map((preset, index) => <button className={`preset-card ${selected === preset.id ? 'selected' : ''}`} aria-pressed={selected === preset.id} key={preset.id} disabled={busy} onClick={() => onSelect(preset)}><span className="preset-top"><MapPin size={18} /><span className="selection-dot">{selected === preset.id && <Check size={13} />}</span></span><strong>{preset.name}</strong><span>{descriptions[index] || preset.description}</span></button>)}</div>
+        {!selected && <p className="mt-3 text-sm">Your custom area is selected. Choose an example above to replace it.</p>}
+      </section>
+      <section className="planner-card"><div className="section-heading"><span className="section-number">02</span><div><h2>Set the conditions</h2><p>Start with the example’s settings, or adjust them below.</p></div></div>
+        <fieldset disabled={busy} className="basic-settings"><label><span><CloudRain size={18} />Rainfall intensity</span><select value={rainfallRate(parameters)} onChange={event => onChange({ ...parameters, rainfall_intensity_mm_hr: Number(event.target.value), rainfall_input_unit: 'mm_per_hour' })}>{Array.from(new Set([25, 50, 90, 140, 220, rainfallRate(parameters)])).sort((a,b)=>a-b).map(value => <option key={value} value={value}>{value} mm/hour</option>)}</select><small>Rainfall per hour in this simulated scenario.</small></label><label><span><Clock3 size={18} />Analysis duration</span><select value={parameters.duration_hours} onChange={event => onChange({ ...parameters, duration_hours: Number(event.target.value) })}>{Array.from({length: 12}, (_, i) => i + 1).map(value => <option key={value} value={value}>{value} {value === 1 ? 'hour' : 'hours'}</option>)}</select><small>Explore how conditions change over time.</small></label></fieldset>
+      </section>
+      <details className="planner-card advanced-settings"><summary><SlidersHorizontal size={18} /><span>Advanced settings<small>Flood depth, spread, custom areas, and rescue vehicles</small></span></summary><div className="space-y-5 mt-5">{advanced}</div></details>
+      <div className="step-footer"><p>You can review everything before running.</p><button className="planner-primary" disabled={busy || drawing} onClick={onReview}>Review scenario <ArrowRight size={18} /></button></div>
+      {drawing && <p role="status">Finish or cancel your drawing before continuing.</p>}
+    </div><aside className="setup-preview"><section className="planner-card"><div className="section-heading"><MapPin size={20} /><div><h2>Your area at a glance</h2><p>{presets.find(p => p.id === selected)?.name || 'Custom flood area'}</p></div></div>{map}<p className="map-caption">Highlighted area: the scenario boundary. This is a planning preview, not a live flood map.</p></section><div className="planner-note"><strong>What will this help you do?</strong><ul><li>Understand modeled flood exposure</li><li>Check shelter and rescue needs</li><li>Explore relief supply plans</li></ul><p>No technical expertise needed. The next step explains what the analysis will calculate.</p></div></aside></div>
+  </div>;
+}
+
+export function ScenarioReview({ name, parameters, fleet, zones, busy, online, elapsed, error, onBack, onRun }: {
+  name: string; parameters: DisasterParameters; fleet: number; zones: number; busy: boolean; online: boolean; elapsed: number; error: string; onBack: () => void; onRun: () => void;
+}) {
+  return <div className="guided-screen review-screen"><div className="planner-heading"><span className="planner-eyebrow">READY WHEN YOU ARE</span><h1>Review your scenario.</h1><p>Here’s what we’ll use to build your flood-response plan.</p></div><section className="planner-card"><h2>{name}</h2><p className="muted">Modeled scenario · {zones} defined flood {zones === 1 ? 'area' : 'areas'}</p><dl className="review-values">{[['Rainfall', `${rainfallRate(parameters)} mm/hour`], ['Duration', `${parameters.duration_hours} hours`], ['Peak water depth', `${parameters.flood_depth_meters} metres`], ['Spread rate', `${parameters.spread_rate_meters_hr} metres/hour`], ['Rescue fleet', `${fleet} vehicles`]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section><section className="planner-card"><h2>What happens when you run?</h2><ol className="calculation-list"><li><strong>Estimate exposure</strong><span>Model flood conditions and identify affected population clusters.</span></li><li><strong>Plan the response</strong><span>Screen roads, assign shelter spaces, and estimate rescue support.</span></li><li><strong>Estimate relief needs</strong><span>Use the trained demand model where supported, with planning-rule fallbacks, to plan supplies.</span></li></ol><p className="planner-note">This is a simulation using ML and planning algorithms. Flood depth and spread come from your settings. It does not monitor floods or dispatch emergency services.</p></section>{!online && <p role="status" className="planner-warning">The engine is offline. Start <code>start_project.bat</code> in the project folder, then use Reconnect above. Your settings are retained.</p>}{busy && <p role="status" className="planner-note"><Loader2 className="animate-spin inline mr-2" size={18} />Calculating your plan · {elapsed}s elapsed. Larger areas may take longer.</p>}<div className="step-footer"><button className="planner-secondary" disabled={busy} onClick={onBack}><ArrowLeft size={17} />Back to settings</button><button className="planner-primary" disabled={busy || !online || !zones} onClick={onRun}>{busy ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}{busy ? 'Running analysis…' : error ? 'Retry analysis' : 'Run analysis'}</button></div></div>;
+}
+
+export function ResultsSummary({ result, index, onSelect, map }: { result: SimulationResponse; index: number; onSelect: (index: number) => void; map: ReactNode }) {
+  const step = result.timeline[index];
+  const metrics = step.metrics;
+  const maximum = Math.max(1, ...result.timeline.map(s => s.metrics.total_affected_population));
+  return <div className="results-summary-grid"><div className="space-y-5"><section className="planner-card"><span className="planner-eyebrow">WHAT THE RESULTS MEAN</span><h2>{step.rescue_fleet_plan?.mode === 'continuous' ? `At hour ${step.hour}, baseline flood exposure is ${metrics.total_affected_population.toLocaleString()} people.` : `At hour ${step.hour}, ${metrics.total_affected_population.toLocaleString()} people are in the modeled flood area.`}</h2><p className="mt-3">The ground plan assigns {metrics.total_evacuated_population.toLocaleString()} people to shelters. {metrics.unassigned_stranded_population > 0 ? `${metrics.unassigned_stranded_population.toLocaleString()} people still need rescue support in this snapshot.` : 'No additional rescue demand is reported in this snapshot.'}</p><div className="priority-note"><strong>{metrics.unassigned_stranded_population > 0 ? 'Needs attention: rescue support' : 'No additional rescue demand'}</strong><p>{metrics.unassigned_stranded_population > 0 ? 'Review vehicle plans in Rescue fleet and shelter availability in Shelters & supplies. An assignment is a modeled plan, not a completed rescue.' : 'Check relief stock and delivery plans under Shelters & supplies.'}</p></div><p className="muted">{step.rescue_fleet_plan?.mode === 'continuous' ? 'Ground assignments are recalculated each hour. Rescue commitments and shelter seats carry forward; baseline exposure describes the population before rescue removals.' : 'Hourly plans are independent. Do not add hourly people counts together.'}</p>{step.rescue_fleet_plan?.mode === 'continuous' && <p className="mt-2 text-sm text-cyan-800">Rescue progress: {step.rescue_fleet_plan.cumulative_rescued?.toLocaleString()} simulated shelter arrivals · {step.rescue_fleet_plan.committed_not_arrived?.toLocaleString()} committed passengers not yet arrived.</p>}</section><section className="planner-card"><h2>How does exposure change?</h2><p className="muted">Select an hour to update all results and the map.</p><div className="exposure-chart" role="group" aria-label="Hourly affected population">{result.timeline.map((snapshot, i) => <button key={snapshot.hour} aria-pressed={index === i} aria-label={`Hour ${snapshot.hour}: ${snapshot.metrics.total_affected_population.toLocaleString()} affected people`} onClick={() => onSelect(i)}><strong>{snapshot.metrics.total_affected_population >= 1000 ? `${(snapshot.metrics.total_affected_population/1000).toFixed(1)}k` : snapshot.metrics.total_affected_population}</strong><span><i style={{height: `${Math.max(2, snapshot.metrics.total_affected_population / maximum * 100)}%`}} /></span><small>Hour {snapshot.hour}</small></button>)}</div></section></div><section className="planner-card"><h2>Area overview</h2><p className="muted mb-4">Modeled conditions at hour {step.hour}</p>{map}<p className="map-caption">Open Map & routes for layers, route details, and playback.</p><div className="planner-note"><strong>Where does ML contribute?</strong><p>{result.diagnostics ? `${result.diagnostics.ml_predictions} demand predictions and ${result.diagnostics.rule_predictions} planning-rule fallbacks in this run.` : 'Model usage evidence is unavailable for this analysis.'} Relief-demand training is synthetic. Rainfall replay is available separately in Models & datasets.</p></div></section></div>;
+}

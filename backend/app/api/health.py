@@ -23,6 +23,7 @@ def get_health(request: Request):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "environment": "production",
         "demand_model": "ensemble" if supply_solver and supply_solver.ml_predictor and supply_solver.ml_predictor.is_loaded else "rule_based",
+        "model_details": supply_solver.ml_predictor.metadata() if supply_solver and hasattr(supply_solver.ml_predictor, "metadata") else None,
         "network_stats": {
             "nodes_count": nodes_count,
             "edges_count": edges_count,

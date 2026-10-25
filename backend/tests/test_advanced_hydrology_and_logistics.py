@@ -21,7 +21,8 @@ def test_topographic_elevation_and_drainage_context():
     assert mount_elev > marina_elev
 
 def setup_mock_road_engine():
-    road_engine = RoadNetworkEngine()
+    from pathlib import Path
+    road_engine = RoadNetworkEngine(str(Path(__file__).parents[1]/"app/data/chennai_roads.json"))
     # Override nodes and edges for testing
     road_engine.nodes_data = {
         "n1": {"id": "n1", "lat": 13.0500, "lon": 80.2820}, # Marina (elev ~2.0m)
@@ -55,7 +56,7 @@ def test_evacuation_bpr_congestion_and_urgency():
     step_zones_state = [
         {
             "id": "z1", "type": "circle", "center": [13.0500, 80.2820],
-            "current_radius": 2000.0, "peak_depth": 1.0, 
+            "current_radius": 2000.0, "peak_depth": 0.35, 
         }
     ]
 

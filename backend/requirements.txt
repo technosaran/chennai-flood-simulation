@@ -11,3 +11,5 @@ scikit-learn>=1.2.0
 joblib>=1.2.0
 xgboost>=2.0.3
 shap>=0.44.0
+
+truststore>=0.10,<1

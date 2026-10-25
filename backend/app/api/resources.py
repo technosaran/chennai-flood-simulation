@@ -1,3 +1,4 @@
+from copy import deepcopy
 from fastapi import APIRouter, Request, HTTPException
 from backend.app.models.logistics import (
     AllocationRequest,
@@ -9,10 +10,35 @@ from backend.app.models.logistics import (
 router = APIRouter()
 
 
+@router.get("/resources/state")
+def get_resource_state(request: Request):
+    """Available depot stock and delivered supplies for the current simulation."""
+    with request.app.state.simulation_lock:
+        solver = request.app.state.supply_solver
+        warehouses = [
+            {**w, "supplies": dict(solver.warehouse_stocks[w["id"]]["available"])}
+            for w in solver.warehouses_baseline
+        ]
+        points = [
+            {**p, "demand": dict(solver.point_demands[p["id"]]["demand"]),
+             "current_stock": dict(solver.point_demands[p["id"]]["allocated"])}
+            for p in solver.distribution_points_baseline
+        ]
+        latest = getattr(request.app.state, "latest_simulation", None)
+        return {"simulation_id": latest["simulation_id"] if latest else None,
+                "warehouses": warehouses, "distribution_points": points}
+
+
 @router.post("/resources/allocate")
 def allocate_resources(req: AllocationRequest, request: Request):
     with request.app.state.simulation_lock:
-        return _allocate_resources(req, request)
+        solver = request.app.state.supply_solver
+        previous = deepcopy((solver.warehouse_stocks, solver.point_demands))
+        try:
+            return _allocate_resources(req, request)
+        except Exception:
+            solver.warehouse_stocks, solver.point_demands = previous
+            raise
 
 
 def _allocate_resources(req: AllocationRequest, request: Request):
@@ -22,7 +48,11 @@ def _allocate_resources(req: AllocationRequest, request: Request):
     if not supply_solver or not road_engine:
         raise HTTPException(status_code=500, detail="Logistics solver services are not initialized.")
 
-    transfers = req.transfers or []
+    latest = getattr(request.app.state, "latest_simulation", None)
+    if req.simulation_id and (not latest or req.simulation_id != latest["simulation_id"]):
+        raise HTTPException(status_code=409, detail="The scenario has changed on the engine. Run your scenario again before allocating supplies.")
+
+    transfers = list(req.transfers or [])
 
     # If single shelter_or_point_id + supplies provided
     if req.shelter_or_point_id and req.supplies:
@@ -56,9 +86,9 @@ def _allocate_resources(req: AllocationRequest, request: Request):
             tot_avail_m = sum(w["available"]["medical_kits"] for w in supply_solver.warehouse_stocks.values())
             raise HTTPException(
                 status_code=400,
-                detail=f"Insufficient inventory across warehouses. "
+                detail=f"Insufficient inventory: no eligible single warehouse can fulfill this allocation. "
                        f"Requested: {needed_water}L water, {needed_food} rations, {needed_med} kits. "
-                       f"Available in any single warehouse: max available water {tot_avail_w}L."
+                       f"Combined stock across all depots: {tot_avail_w}L water, {tot_avail_f} rations, {tot_avail_m} kits. Choose another depot or split the allocation."
             )
 
         transfers.append(
@@ -96,9 +126,20 @@ def _allocate_resources(req: AllocationRequest, request: Request):
             f["properties"]["wading_depth_clearance_m"] = 99.0
             verified_rescue_routes.append(f)
 
+    if latest:
+        # Publish one consistent snapshot for later API reads and advisory consumers.
+        updated = deepcopy(latest)
+        updated["inventory_ledger"] = alloc_result["ledger"]
+        updated["supply_routes"]["features"].extend(verified_truck_routes)
+        updated["rescue_routes"]["features"].extend(verified_rescue_routes)
+        final = updated["timeline"][-1]
+        final["inventory_status"] = alloc_result["updated_inventory"]
+        final["supply_routes"]["features"].extend(verified_truck_routes + verified_rescue_routes)
+        request.app.state.latest_simulation = updated
+
     return {
         "success": True,
-        "simulation_id": req.simulation_id,
+        "simulation_id": latest["simulation_id"] if latest else None,
         "message": alloc_result["message"],
         "updated_inventory": alloc_result["updated_inventory"],
         "allocation_details": {

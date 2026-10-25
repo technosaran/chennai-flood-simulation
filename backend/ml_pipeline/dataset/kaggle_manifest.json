@@ -1,0 +1,11 @@
+{
+  "source_url": "https://www.kaggle.com/datasets/vanvalkenberg/historicalweatherdataforindiancities",
+  "dataset": "vanvalkenberg/historicalweatherdataforindiancities",
+  "downloaded_at": "2026-10-23T12:53:22.568774+00:00",
+  "archive_sha256": "411ca00ea30ecf2800649de424831602723a7d78547b4c04de1e9b5ef0513bff",
+  "dataset_sha256": "407620f86342c53f5fb03c75d21bb02b90ee0b3ff649fce39568ad39bc008e14",
+  "rows": 11894,
+  "missing_temperature": 27,
+  "missing_rainfall": 4886,
+  "provenance": "Kaggle uploader weather archive; station provenance has not been independently audited."
+}

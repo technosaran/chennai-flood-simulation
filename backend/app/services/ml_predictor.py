@@ -31,6 +31,8 @@ class MLPredictor:
         self.xgb_model = None
         self.rf_model = None
         self.scaler = None
+        self.explainer = None
+        self.explainer_attempted = False
         self._load_model()
 
     def _load_model(self):
@@ -54,7 +56,7 @@ class MLPredictor:
                 
                 # Load DNN
                 self.dnn_model = SupplyDemandDNN(input_dim=5, output_dim=3)
-                self.dnn_model.load_state_dict(torch.load(dnn_path))
+                self.dnn_model.load_state_dict(torch.load(dnn_path, map_location="cpu", weights_only=True))
                 self.dnn_model.eval()
                 
                 self.is_loaded = True
@@ -80,21 +82,22 @@ class MLPredictor:
             rf_preds = self.rf_model.predict(features_scaled)[0]
             
             # Predict DNN
-            with torch.no_grad():
+            with torch.inference_mode():
                 input_tensor = torch.FloatTensor(features_scaled)
                 dnn_preds = self.dnn_model(input_tensor).numpy()[0]
                 
             # Ensemble Average
             predictions = (xgb_preds + rf_preds + dnn_preds) / 3.0
             
-            water = max(0, int(predictions[0]))
-            food = max(0, int(predictions[1]))
-            meds = max(0, int(predictions[2]))
+            if not np.all(np.isfinite(predictions)):
+                return None
+            if shelter_occupancy == 0:
+                predictions[:] = 0
+            water = max(shelter_occupancy * 3, int(predictions[0]))
+            food = max(shelter_occupancy * 3, int(predictions[1]))
+            meds = max(int(np.ceil(shelter_occupancy * .02)), int(predictions[2]))
             
             # Explainable AI (SHAP) - Using XGBoost for speed
-            import shap
-            explainer = shap.TreeExplainer(self.xgb_model)
-            shap_values = explainer.shap_values(features_scaled)
             
             # shap_values shape for multi-output regressor: (n_samples, n_targets, n_features) or list of (n_samples, n_features)
             # In latest SHAP + XGBoost multi-output, it's often a list of arrays, one per target. 
@@ -104,13 +107,23 @@ class MLPredictor:
             feature_names = ["Rainfall", "Flood Depth", "Density", "Vulnerability", "Evacuees"]
             impacts = {}
             try:
+                # Explanations are optional and cannot invalidate useful inference.
+                # Build once rather than repeating expensive model setup per shelter.
+                if not self.explainer_attempted:
+                    self.explainer_attempted = True
+                    import shap
+                    self.explainer = shap.TreeExplainer(self.xgb_model)
+                if self.explainer is None:
+                    raise ValueError("SHAP explanation unavailable")
+                shap_values = self.explainer.shap_values(features_scaled)
                 # If shap_values is a list of arrays (one for each target), we sum the absolute values across targets
                 if isinstance(shap_values, list):
                     total_shap = np.sum([np.abs(sv[0]) for sv in shap_values], axis=0)
                 else:
                     # If it's a 3D array (1, 3 targets, 5 features) or (1, 5 features)
                     if len(shap_values.shape) == 3:
-                        total_shap = np.sum(np.abs(shap_values[0]), axis=0)
+                        # Current SHAP layout is samples x features x outputs.
+                        total_shap = np.sum(np.abs(shap_values[0]), axis=-1)
                     else:
                         total_shap = np.abs(shap_values[0])
                 
@@ -118,7 +131,7 @@ class MLPredictor:
                 impacts = {name: round((val / shap_sum) * 100, 1) for name, val in zip(feature_names, total_shap)}
             except Exception as e:
                 # Fallback simplistic heuristic if SHAP version mismatch occurs
-                impacts = {"Vulnerability": 45.0, "Flood Depth": 30.0, "Rainfall": 15.0, "Density": 10.0}
+                impacts = {}
 
             # Sort impacts
             sorted_impacts = sorted(impacts.items(), key=lambda x: x[1], reverse=True)

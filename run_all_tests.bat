@@ -1,24 +1,21 @@
 @echo off
-echo Running All Test Suites for Chennai Disaster Simulation...
+setlocal
 cd /d "%~dp0"
-echo.
-echo [1/2] Running Backend Unit Tests...
-python -m pytest backend/tests -v
-if %ERRORLEVEL% NEQ 0 (
-    echo Backend unit tests failed!
-    pause
-    exit /b %ERRORLEVEL%
-)
-echo.
-echo [2/2] Running End-to-End Test Suite...
-python -m pytest e2e/ -v
-if %ERRORLEVEL% NEQ 0 (
-    echo E2E tests failed!
-    pause
-    exit /b %ERRORLEVEL%
-)
-echo.
-echo ========================================================
-echo ALL TESTS PASSED SUCCESSFULLY! (35 Unit + 95 E2E Tests)
-echo ========================================================
+set "SIM_PYTHON=python"
+if exist ".venv\Scripts\python.exe" set "SIM_PYTHON=.venv\Scripts\python.exe"
+set "ENABLE_ML=0"
+echo [1/4] Backend unit and API checks
+"%SIM_PYTHON%" -m pytest backend\tests -q
+if errorlevel 1 exit /b 1
+echo [2/4] Integration checks - backend must be running on port 8000
+"%SIM_PYTHON%" -m pytest e2e -q --strict-live
+if errorlevel 1 exit /b 1
+echo [3/4] Self-contained report checks
+cd frontend
+node --test tests/scenario-report.test.cjs
+if errorlevel 1 exit /b 1
+echo [4/4] Frontend production build - stop the dev server before running
+call npm.cmd run build
+if errorlevel 1 exit /b 1
+echo All checks passed.
 pause

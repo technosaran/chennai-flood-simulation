@@ -16,7 +16,8 @@ def client():
 
 @pytest.fixture(scope="session")
 def road_engine():
-    return RoadNetworkEngine()
+    from pathlib import Path
+    return RoadNetworkEngine(str(Path(__file__).parents[1]/"app/data/chennai_roads.json"))
 
 
 @pytest.fixture(scope="session")

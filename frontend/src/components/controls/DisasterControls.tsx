@@ -38,6 +38,7 @@ interface DisasterControlsProps {
   onRunSimulation: () => void;
   isSimulating: boolean;
   definedZonesCount: number;
+  advancedOnly?: boolean;
 }
 
 export default function DisasterControls({
@@ -56,6 +57,7 @@ export default function DisasterControls({
   onRunSimulation,
   isSimulating,
   definedZonesCount,
+  advancedOnly = false,
 }: DisasterControlsProps) {
   const intensityLabels: Record<number, string> = {
     1: 'Advisory (25 mm/h)',
@@ -66,90 +68,56 @@ export default function DisasterControls({
   };
 
   return (
-    <div className="glass-panel animate-slide-right flex flex-col gap-5 p-4 rounded-xl text-slate-200 max-h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar">
-      {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20 shadow-glow-cyan">
-            <Layers className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-100 uppercase tracking-wide">
-              Disaster Scenario Setup
-            </h2>
-            <p className="text-[11px] text-slate-400">
-              Chennai GCC Flood Epicenter & Meteorology
-            </p>
-          </div>
-        </div>
-        {definedZonesCount > 0 && (
-          <span className="text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded-full shadow-glow-cyan">
-            {definedZonesCount} {definedZonesCount === 1 ? 'Zone' : 'Zones'} Ready
-          </span>
-        )}
+    <div className="glass-panel animate-slide-right flex flex-col gap-5 p-4 rounded-xl text-slate-900  overflow-y-auto custom-scrollbar">
+      {!advancedOnly && <div className="space-y-2">
+        <label htmlFor="scenario-preset" className="text-sm font-medium text-slate-700">Scenario preset</label>
+        <select id="scenario-preset" value={activePresetId || ''} disabled={isSimulating} onChange={event => { const preset = HISTORICAL_PRESETS.find(item => item.id === event.target.value); if (preset) onSelectPreset(preset); }} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900">
+          <option value="" disabled>Custom scenario</option>
+          {HISTORICAL_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+        </select>
       </div>
 
-      {/* 1. Quick Historical Disaster Presets */}
+      }
+      {/* 2. Custom flood zone (Drawing & Circle) */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 border-b border-slate-800/50 pb-1.5">
-          <History className="w-4 h-4 text-amber-400" />
-          <h3 className="text-sm font-semibold text-slate-300">Historical Disaster Presets</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {HISTORICAL_PRESETS.map((preset) => {
-            const isSelected = activePresetId === preset.id;
-            return (
-              <button
-                key={preset.id}
-                onClick={() => onSelectPreset(preset)}
-                className={`text-left p-3 rounded-lg border text-xs transition-all duration-200 hover-lift hover:scale-[1.02] ${
-                  isSelected
-                    ? 'bg-amber-500/15 border-amber-500/60 text-amber-300 shadow-glow-amber'
-                    : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/80 text-slate-300 hover:text-white'
-                }`}
-              >
-                <div className="font-semibold line-clamp-1">{preset.name}</div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {preset.default_depth}m • Level {preset.default_rainfall}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Interactive Flood Zone Creation (Drawing & Circle) */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 border-b border-slate-800/50 pb-1.5">
-          <PenTool className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-sm font-semibold text-slate-300">Interactive Flood Zone Creation</h3>
+        <div className="flex items-center gap-2 border-b border-slate-200/50 pb-1.5">
+          <PenTool className="w-4 h-4 text-cyan-700" />
+          <h3 className="text-sm font-semibold text-slate-700">
+            Custom flood zone
+          </h3>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           {/* Circle Mode Button */}
           <button
             onClick={() =>
-              setActiveDrawingMode(activeDrawingMode === 'circle' ? 'none' : 'circle')
+              setActiveDrawingMode(
+                activeDrawingMode === 'circle' ? 'none' : 'circle',
+              )
             }
-            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium transition-all hover-lift ${
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-all  ${
               activeDrawingMode === 'circle'
-                ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-glow-cyan'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                ? 'bg-cyan-500 text-slate-600 font-bold border-cyan-400 '
+                : 'bg-slate-50/80 hover:bg-slate-100 text-slate-700 border-slate-200'
             }`}
           >
             <CircleDot className="w-4 h-4" />
-            {activeDrawingMode === 'circle' ? 'Click Map for Epicenter' : 'Circle Radius'}
+            {activeDrawingMode === 'circle'
+              ? 'Click Map for Epicenter'
+              : 'Circle Radius'}
           </button>
 
           {/* Polygon Mode Button */}
           <button
             onClick={() =>
-              setActiveDrawingMode(activeDrawingMode === 'polygon' ? 'none' : 'polygon')
+              setActiveDrawingMode(
+                activeDrawingMode === 'polygon' ? 'none' : 'polygon',
+              )
             }
-            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium transition-all hover-lift ${
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-all  ${
               activeDrawingMode === 'polygon'
-                ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-glow-cyan'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                ? 'bg-cyan-500 text-slate-600 font-bold border-cyan-400 '
+                : 'bg-slate-50/80 hover:bg-slate-100 text-slate-700 border-slate-200'
             }`}
           >
             <PenTool className="w-4 h-4" />
@@ -161,15 +129,17 @@ export default function DisasterControls({
 
         {/* Dynamic Controls depending on drawing mode */}
         {activeDrawingMode === 'circle' && (
-          <div className="bg-slate-800/50 p-3 rounded-lg border border-cyan-500/30 space-y-2 animate-slide-down shadow-glow-cyan">
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-400">Epicenter Radius:</span>
-              <span className="font-mono font-bold text-cyan-300">
-                {(circleRadiusMeters / 1000).toFixed(1)} km ({circleRadiusMeters} m)
+          <div className="bg-slate-50/50 p-3 rounded-lg border border-cyan-200/30 space-y-2 animate-slide-down ">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-700">Epicenter Radius:</span>
+              <span className="font-mono font-bold text-cyan-700">
+                {(circleRadiusMeters / 1000).toFixed(1)} km (
+                {circleRadiusMeters} m)
               </span>
             </div>
             <input
               type="range"
+              aria-label="Circle radius"
               min={500}
               max={5000}
               step={100}
@@ -177,22 +147,24 @@ export default function DisasterControls({
               onChange={(e) => setCircleRadiusMeters(Number(e.target.value))}
               className="w-full slider-cyan cursor-pointer"
             />
-            <p className="text-[10px] text-cyan-200/80 italic">
-              * Click anywhere on the Chennai map to place the flood circle epicenter.
+            <p className="text-sm text-cyan-700/80 italic">
+              * Click anywhere on the Chennai map to place the flood circle
+              epicenter.
             </p>
           </div>
         )}
 
         {activeDrawingMode === 'polygon' && (
-          <div className="bg-slate-800/50 p-3 rounded-lg border border-cyan-500/30 space-y-3 animate-slide-down shadow-glow-cyan">
-            <p className="text-[11px] text-slate-300">
-              Click consecutive points on the map to define the polygon boundary perimeter.
+          <div className="bg-slate-50/50 p-3 rounded-lg border border-cyan-200/30 space-y-3 animate-slide-down ">
+            <p className="text-sm text-slate-700">
+              Click consecutive points on the map to define the polygon boundary
+              perimeter.
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={onFinishPolygon}
                 disabled={draftPolygonPoints.length < 3}
-                className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Finish ({draftPolygonPoints.length} pts)
@@ -200,7 +172,7 @@ export default function DisasterControls({
               <button
                 onClick={onUndoLastPoint}
                 disabled={draftPolygonPoints.length === 0}
-                className="py-1.5 px-3 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                className="py-1.5 px-3 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 text-sm rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                 title="Undo last placed point"
               >
                 <Undo2 className="w-3.5 h-3.5" />
@@ -208,7 +180,7 @@ export default function DisasterControls({
               </button>
               <button
                 onClick={onClearDrawing}
-                className="py-1.5 px-3 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                className="py-1.5 px-3 bg-slate-100 hover:bg-slate-100 text-slate-700 text-sm rounded-lg flex items-center justify-center gap-1.5 transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Clear
@@ -220,21 +192,26 @@ export default function DisasterControls({
 
       {/* 3. Disaster Parameter Controls */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 border-b border-slate-800/50 pb-1.5">
-          <CloudRain className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-slate-300">Disaster Parameters</h3>
+        <div className="flex items-center gap-2 border-b border-slate-200/50 pb-1.5">
+          <CloudRain className="w-4 h-4 text-blue-700" />
+          <h3 className="text-sm font-semibold text-slate-700">
+            Disaster Parameters
+          </h3>
         </div>
 
+        {!advancedOnly && <>
         {/* Rainfall Intensity Slider (1 - 5) */}
         <div className="space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400">Rainfall Intensity</span>
-            <span className="font-mono font-bold text-blue-300">
-              {intensityLabels[parameters.rainfall_intensity_mm_hr] || `Level ${parameters.rainfall_intensity_mm_hr}`}
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-700">Rainfall Intensity</span>
+            <span className="font-mono font-bold text-blue-700">
+              {intensityLabels[parameters.rainfall_intensity_mm_hr] ||
+                `Level ${parameters.rainfall_intensity_mm_hr}`}
             </span>
           </div>
           <input
             type="range"
+            aria-label="Rainfall intensity"
             min={1}
             max={5}
             step={1}
@@ -243,6 +220,7 @@ export default function DisasterControls({
               onParametersChange({
                 ...parameters,
                 rainfall_intensity_mm_hr: Number(e.target.value),
+                rainfall_input_unit: 'legacy_level',
               })
             }
             className="w-full slider-blue cursor-pointer"
@@ -253,32 +231,34 @@ export default function DisasterControls({
                 key={val}
                 className={`w-1.5 h-1.5 rounded-full ${
                   parameters.rainfall_intensity_mm_hr >= val
-                    ? 'bg-blue-400 shadow-glow-cyan'
-                    : 'bg-slate-700'
+                    ? 'bg-blue-400 '
+                    : 'bg-slate-100'
                 }`}
               />
             ))}
           </div>
-          <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-            <span>L1 (Advisory)</span>
-            <span>L3 (Heavy)</span>
-            <span>L5 (Severe)</span>
+          <div className="flex justify-between text-[9px] text-slate-600 font-mono">
+            <span>25 mm/h</span>
+            <span>90 mm/h</span>
+            <span>220 mm/h</span>
           </div>
         </div>
 
+        </>}
         {/* Flood Depth Slider (0.1m - 3.0m) */}
         <div className="space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400 flex items-center gap-1.5">
-              <Waves className="w-3.5 h-3.5 text-cyan-400" />
-              Peak Water Inundation Depth
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-700 flex items-center gap-1.5">
+              <Waves className="w-3.5 h-3.5 text-cyan-700" />
+              Peak water depth
             </span>
-            <span className="font-mono font-bold text-cyan-300">
+            <span className="font-mono font-bold text-cyan-700">
               {parameters.flood_depth_meters.toFixed(1)} m
             </span>
           </div>
           <input
             type="range"
+            aria-label="Peak flood depth"
             min={0.1}
             max={3.0}
             step={0.1}
@@ -295,20 +275,21 @@ export default function DisasterControls({
 
         {/* Spread Rate Slider (50m/hr - 500m/hr) */}
         <div className="space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400 flex items-center gap-1.5">
-              <Wind className="w-3.5 h-3.5 text-amber-400" />
-              Spread Rate (Propagation Velocity)
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-700 flex items-center gap-1.5">
+              <Wind className="w-3.5 h-3.5 text-amber-800" />
+              Spread rate
             </span>
-            <span className="font-mono font-bold text-amber-300">
+            <span className="font-mono font-bold text-amber-800">
               {parameters.spread_rate_meters_hr} m/h
             </span>
           </div>
           <input
             type="range"
+            aria-label="Flood spread rate"
             min={50}
             max={500}
-            step={25}
+            step={10}
             value={parameters.spread_rate_meters_hr}
             onChange={(e) =>
               onParametersChange({
@@ -321,33 +302,33 @@ export default function DisasterControls({
         </div>
       </div>
 
-      {/* 4. Action Button: "Run Simulation" */}
-      <div className="pt-2">
-        <button
-          onClick={onRunSimulation}
-          disabled={isSimulating}
-          className={`w-full py-3 px-4 rounded-lg font-extrabold text-sm flex items-center justify-center gap-2 transition-all duration-300 ${
-            isSimulating
-              ? 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-80'
-              : 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 bg-[length:200%_100%] hover:animate-gradient-shift text-slate-950 shadow-glow-cyan hover:shadow-lg hover:shadow-cyan-500/40 relative'
-          }`}
+      {!advancedOnly && <div className="space-y-2">
+        <label
+          htmlFor="duration"
+          className="text-sm text-slate-700 flex justify-between"
         >
-          {!isSimulating && (
-            <div className="absolute inset-0 rounded-lg ring-2 ring-cyan-400/50 animate-ping opacity-20" />
-          )}
-          {isSimulating ? (
-            <>
-              <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-              <span>Computing Simulation Engine...</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-5 h-5 fill-slate-950" />
-              <span>Run Spatio-Temporal Simulation</span>
-            </>
-          )}
-        </button>
-      </div>
+          Simulation duration{' '}
+          <span className="text-cyan-700">
+            {parameters.duration_hours} hours
+          </span>
+        </label>
+        <input
+          id="duration"
+          aria-label="Simulation duration"
+          type="range"
+          min={1}
+          max={12}
+          step={1}
+          value={parameters.duration_hours}
+          onChange={(e) =>
+            onParametersChange({
+              ...parameters,
+              duration_hours: Number(e.target.value),
+            })
+          }
+          className="slider-cyan"
+        />
+      </div>}
     </div>
   );
 }

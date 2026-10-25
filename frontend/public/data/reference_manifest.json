@@ -1,0 +1,37 @@
+{
+  "retrieved_at": "2026-10-18T14:19:45.163082+00:00",
+  "ward_count": 200,
+  "ward_source": "https://gisgcc.chennaicorporation.gov.in/server/rest/services/GCCPublic/GCC_AdminBoundary/MapServer/4",
+  "ward_query": "https://gisgcc.chennaicorporation.gov.in/server/rest/services/GCCPublic/GCC_AdminBoundary/MapServer/4/query?where=1%3D1&outFields=ward&outSR=4326&f=geojson&geometryPrecision=5",
+  "ward_vintage": "Effective boundary date not supplied by source",
+  "roads_source": "OpenStreetMap contributors / Overpass API",
+  "river_source": "OpenStreetMap contributors / Overpass API",
+  "river_query": "https://overpass.private.coffee/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A30%5D%3Bway%5Bwaterway%3Driver%5D%2812.8%2C80.05%2C13.3%2C80.35%29%3Bout+geom%3B",
+  "river_license": "https://www.openstreetmap.org/copyright",
+  "files": {
+    "gcc_wards.json": "08d014bd509babcfe4d4a7f048aabb1c88e226a7019d78f1770abe7157dcee82",
+    "offline_roads.json": "85747e1a855a5bd34702fd5d3d4974d863b9e0207387a948dd63831387878f8c",
+    "offline_rivers.json": "1f6a55f63291cf0b83b1e7f5fcba997252a0e5e465c5a0be86448c3e5c6a63a3"
+  },
+  "roads_metadata": {
+    "source": "OpenStreetMap contributors / Overpass API",
+    "license": "ODbL",
+    "attribution_url": "https://www.openstreetmap.org/copyright",
+    "bounds": [
+      12.82,
+      80.03,
+      13.26,
+      80.34
+    ],
+    "osm_timestamp": "2026-07-24T11:04:51Z",
+    "retrieved_at": "2026-10-22T09:07:01.174288+00:00",
+    "node_count": 178798,
+    "directed_edge_count": 449548,
+    "limitations": [
+      "Static OSM snapshot, not live road status.",
+      "Turn restrictions and conditional access are not resolved.",
+      "Facility access connectors are unverified; mapped bridges do not establish flood clearance."
+    ],
+    "source_sha256": "213a351d2d22d25249febd0f5c942214326d67a7be42e4c34f9d34e94c30f9f5"
+  }
+}

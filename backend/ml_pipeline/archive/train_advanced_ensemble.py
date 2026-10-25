@@ -15,7 +15,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 # 1. Historical Dataset Generation (2015-2023)
 # ==========================================
 def generate_historical_dataset(num_samples=15000):
-    print("Generating Dataset based on Historical Chennai Floods (2015, 2020, 2023)...")
+    print("Generating SYNTHETIC event-inspired Chennai data; this is not observed historical ground truth...")
     np.random.seed(42)
     
     # Define historical events to sample from
@@ -50,7 +50,7 @@ def generate_historical_dataset(num_samples=15000):
         shelter_pct = np.clip(depth * 0.05 * np.random.uniform(0.8, 1.2), 0, 0.20)
         shelter_occupancy = int(ward["density"] * shelter_pct)
         
-        # Actual Historical Demand (Calculated based on real-world Sphere standards + stress factors)
+        # Synthetic demand targets derived from planning rules and random stress factors.
         # 1. Water: Baseline 3L + 1L extra for high temp/humidity + contamination factor
         water = shelter_occupancy * (3.0 + (depth * 0.5)) + np.random.normal(0, shelter_occupancy * 0.1)
         # 2. Food: 3 Rations + spoilage factor in deep floods
@@ -76,7 +76,7 @@ def generate_historical_dataset(num_samples=15000):
     os.makedirs(os.path.join(os.path.dirname(__file__), 'dataset'), exist_ok=True)
     csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'chennai_historical_2015_2023.csv')
     df.to_csv(csv_path, index=False)
-    print(f"Historical Dataset saved to {csv_path}")
+    print(f"Synthetic Dataset saved to {csv_path}")
     return df
 
 # ==========================================

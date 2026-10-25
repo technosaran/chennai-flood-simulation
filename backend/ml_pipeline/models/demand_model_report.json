@@ -1,0 +1,83 @@
+{
+  "holdout_event": "2023_Michaung",
+  "training_rows": 53901,
+  "calibration_rows": 17967,
+  "test_rows": 28132,
+  "source": "synthetic labels; no observed flood or relief ground truth",
+  "selection": "Convex weights selected using GroupKFold out-of-event predictions on fitting rows only.",
+  "cross_validation": [
+    {
+      "held_out_events": [
+        "2015_Deluge"
+      ],
+      "rows": 14863
+    },
+    {
+      "held_out_events": [
+        "2021_Monsoon_Peak"
+      ],
+      "rows": 9079
+    },
+    {
+      "held_out_events": [
+        "2020_Nivar"
+      ],
+      "rows": 9015
+    },
+    {
+      "held_out_events": [
+        "Flash_Cloudburst"
+      ],
+      "rows": 7461
+    },
+    {
+      "held_out_events": [
+        "2016_Vardah_Surge"
+      ],
+      "rows": 7450
+    },
+    {
+      "held_out_events": [
+        "Northeast_Monsoon_Depression"
+      ],
+      "rows": 6033
+    }
+  ],
+  "component_weights": [
+    [
+      0.0,
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      0.8,
+      0.2
+    ]
+  ],
+  "mae_units": {
+    "water_litres": 95.38009577938733,
+    "food_rations": 79.49101117897648,
+    "medical_kits": 11.13954494618299
+  },
+  "r2": {
+    "water_litres": 0.9990859448961641,
+    "food_rations": 0.998969576409334,
+    "medical_kits": 0.9683043535177712
+  },
+  "baseline_mae_units": {
+    "water_litres": 3827.227718967723,
+    "food_rations": 1945.0221719038816,
+    "medical_kits": 100.2762476894645
+  },
+  "interval_coverage": {
+    "water_litres": 0.9048059149722736,
+    "food_rations": 0.9011801507180435,
+    "medical_kits": 0.8908360585809754
+  }
+}

@@ -6,6 +6,7 @@ Pure Python implementation without SciPy.
 """
 import json
 import os
+from functools import lru_cache
 from typing import List, Dict, Any, Tuple, Optional
 from backend.app.services.geometry import (
     haversine_meters,
@@ -83,6 +84,7 @@ CHENNAI_DRAINAGE_CORRIDORS = [
 ]
 
 
+@lru_cache(maxsize=32768)
 def get_topographic_context(lat: float, lon: float) -> Tuple[float, float, str, float]:
     """
     Inverse-distance weighted topographic interpolation for any Chennai location:
@@ -229,10 +231,11 @@ class FloodSimulationEngine:
         """
         resolved_zones = self.resolve_flood_zones(raw_zones, params)
         timeline = []
-        num_steps = int(params.duration_hours / params.time_step_hours) + 1
+        elapsed = [i * params.time_step_hours for i in range(int(params.duration_hours / params.time_step_hours) + 1)]
+        if elapsed[-1] < params.duration_hours:
+            elapsed.append(float(params.duration_hours))
 
-        for step in range(num_steps):
-            t_hours = step * params.time_step_hours
+        for step, t_hours in enumerate(elapsed):
             features = []
             step_zones_state = []
 
@@ -244,9 +247,10 @@ class FloodSimulationEngine:
                 current_radius = rz["initial_radius"] + d_exp
 
                 # Depth progression over time:
-                # f_time(t) = min(1.0, 0.3 + 0.7 * (t / (T * 0.6)))
+                # Begin at 10% of peak to include the early evacuation window.
+                # Peak is reached at 60% of the modeled scenario duration.
                 t_peak = max(1.0, params.duration_hours * 0.6)
-                f_time = min(1.0, 0.3 + 0.7 * (t_hours / t_peak))
+                f_time = min(1.0, 0.1 + 0.9 * (t_hours / t_peak))
                 peak_depth = rz["initial_depth"] * f_time
 
                 # Generate multi-tier severity polygons matching hydrologic depth decay
@@ -286,6 +290,15 @@ class FloodSimulationEngine:
                     })
 
                 for tier_info in tiers:
+                    if peak_depth <= 0:
+                        continue
+                    # Drawn polygons use a conservative uniform interior depth,
+                    # exactly as routing does; terrain rays would distort this boundary.
+                    if rz["type"] == "polygon":
+                        if tier_info is not tiers[0]:
+                            continue
+                        severity, _, _, _ = classify_severity(peak_depth)
+                        tier_info = {**tier_info, "sev": severity, "depth": round(peak_depth, 2)}
                     t_sev = tier_info["sev"]
                     t_depth = tier_info["depth"]
                     t_radius = tier_info["radius"]
@@ -302,7 +315,7 @@ class FloodSimulationEngine:
                         base_points = dilate_polygon(rz["initial_coordinates"], d_exp_tier)[:-1]
 
                     import math
-                    for pt in base_points:
+                    for pt in base_points if rz["type"] == "circle" else []:
                         # Ray from center to this nominal point
                         d_nominal = haversine_meters(c_lat, c_lon, pt[0], pt[1])
                         if d_nominal < 1.0:
@@ -337,12 +350,23 @@ class FloodSimulationEngine:
                                 
                         poly_latlon.append([round(best_lat, 6), round(best_lon, 6)])
                     
-                    poly_latlon.append(poly_latlon[0])  # Close ring
+                    if rz["type"] == "polygon":
+                        poly_latlon = dilate_polygon(rz["initial_coordinates"], d_exp)
+                    else:
+                        poly_latlon.append(poly_latlon[0])  # Close ring
 
                     sev_style = SEVERITY_STYLES[t_sev]
                     geojson_coords = [[[round(pt[1], 6), round(pt[0], 6)] for pt in poly_latlon]]
 
                     elev_m, runoff_c, basin_n, dist_ch = get_topographic_context(rz["center"][0], rz["center"][1])
+                    scs_runoff_mm = self.compute_scs_curve_number_runoff(
+                        rainfall_mm=params.rainfall_intensity_mm_hr * max(1.0, t_hours),
+                        curve_number=min(95.0, 70.0 + runoff_c * 25.0)
+                    )
+                    # Terrain slope estimated toward sea level (0m) over distance to drainage/coast
+                    terrain_slope = max(0.0005, min(0.02, elev_m / max(500.0, dist_ch)))
+                    velocity_ms = self.compute_mannings_flow_velocity(t_depth, slope_m_per_m=terrain_slope)
+                    hazard_val, hazard_cat = self.compute_hazard_rating(t_depth, velocity_ms, is_urban=True)
 
                     features.append({
                         "type": "Feature",
@@ -366,6 +390,10 @@ class FloodSimulationEngine:
                             "runoff_coefficient": runoff_c,
                             "drainage_basin": basin_n,
                             "drainage_distance_m": dist_ch,
+                            "scs_runoff_depth_mm": round(scs_runoff_mm, 1),
+                            "flow_velocity_m_s": round(velocity_ms, 2),
+                            "hazard_rating": round(hazard_val, 2),
+                            "hazard_category": hazard_cat,
                             "fill_color": sev_style["fill_color"],
                             "stroke_color": sev_style["stroke_color"],
                             "fill_opacity": sev_style["fill_opacity"],
@@ -411,12 +439,14 @@ class FloodSimulationEngine:
                 continue
 
             peak_depth = float(z.get("peak_depth", z.get("water_depth_m", z.get("initial_depth", 0.0))))
+            if peak_depth <= 0:
+                continue
             poly = z.get("polygon_latlon")
 
             # Check polygon interior and boundary directly
-            if poly and point_in_polygon(lat, lon, poly):
-                if peak_depth > max_depth:
-                    max_depth = peak_depth
+            if z.get("type") != "circle" and poly:
+                if point_in_polygon(lat, lon, poly):
+                    max_depth = max(max_depth, peak_depth)
                 continue
 
             # Radial distance check for circular zones or fallback
@@ -426,7 +456,9 @@ class FloodSimulationEngine:
                 dist_m = haversine_meters(lat, lon, c[0], c[1])
                 if dist_m <= radius_m:
                     decay = max(0.1, 1.0 - (dist_m / (radius_m + 1.0)))
-                    depth = peak_depth * decay
+                    center_elev, _, _, _ = get_topographic_context(c[0], c[1])
+                    point_elev, _, _, _ = get_topographic_context(lat, lon)
+                    depth = max(0.0, peak_depth * decay + center_elev - point_elev)
                     if depth > max_depth:
                         max_depth = depth
 
@@ -463,9 +495,9 @@ class FloodSimulationEngine:
             poly = z.get("polygon_latlon")
 
             # Analytical segment-polygon intersection check
-            if poly and segment_intersects_polygon([lat1, lon1], [lat2, lon2], poly):
-                if peak_depth > max_edge_depth:
-                    max_edge_depth = peak_depth
+            if z.get("type") != "circle" and poly:
+                if segment_intersects_polygon([lat1, lon1], [lat2, lon2], poly):
+                    max_edge_depth = max(max_edge_depth, peak_depth)
                 continue
 
             # Check point depths at endpoints and midpoint
@@ -493,3 +525,106 @@ class FloodSimulationEngine:
             return 0.0
 
         return round(max_edge_depth, 2)
+
+    @staticmethod
+    def compute_scs_curve_number_runoff(
+        rainfall_mm: float, curve_number: float = 85.0
+    ) -> float:
+        """
+        Calculates direct surface runoff (Q in mm) using the USDA Soil Conservation
+        Service Curve Number (SCS-CN) method.
+        S = (25400 / CN) - 254 (potential max retention in mm)
+        Ia = 0.2 * S (initial abstraction in mm)
+        Q = (P - Ia)^2 / (P - Ia + S) for P > Ia, else 0
+        """
+        if rainfall_mm <= 0.0 or curve_number <= 0.0:
+            return 0.0
+        cn = max(30.0, min(98.0, curve_number))
+        s_mm = (25400.0 / cn) - 254.0
+        ia_mm = 0.2 * s_mm
+        if rainfall_mm <= ia_mm:
+            return 0.0
+        runoff_mm = ((rainfall_mm - ia_mm) ** 2) / (rainfall_mm - ia_mm + s_mm)
+        return round(max(0.0, runoff_mm), 2)
+
+    @staticmethod
+    def compute_mannings_flow_velocity(
+        depth_m: float,
+        slope_m_per_m: float = 0.001,
+        manning_n: float = 0.030,
+    ) -> float:
+        """
+        Estimates overland and street flow velocity (m/s) using Manning's equation:
+        v = (1 / n) * (Rh)^(2/3) * (S_0)^(1/2)
+        For wide shallow floodplains, hydraulic radius Rh ~= depth_m.
+        """
+        if depth_m <= 0.001 or slope_m_per_m <= 0.0:
+            return 0.0
+        n = max(0.015, min(0.08, manning_n))
+        s = max(0.0001, min(0.10, slope_m_per_m))
+        rh = depth_m
+        v = (1.0 / n) * (rh ** (2.0 / 3.0)) * (s ** 0.5)
+        # Cap realistic urban flood surge speed between 0.05 and 4.0 m/s
+        return round(min(4.0, max(0.02, v)), 3)
+
+    @staticmethod
+    def compute_hazard_rating(
+        depth_m: float,
+        velocity_m_s: float,
+        is_urban: bool = True,
+    ) -> Tuple[float, str]:
+        """
+        Computes flood hazard rating (HR) and classification according to
+        UK Defra / Environment Agency FD2320 guidelines:
+        HR = d * (v + 0.5) + DF
+        where DF (debris factor) = 0.5 (d <= 0.25m) or 1.0 (d > 0.25m) in urban areas.
+        Returns: (hazard_rating_score, hazard_category)
+        Categories:
+          - 'low': Caution / Wading safe
+          - 'moderate': Dangerous for some (children, elderly)
+          - 'significant': Dangerous for most (people and vehicles)
+          - 'extreme': Dangerous for all (life threat, building damage)
+        """
+        if depth_m <= 0.02:
+            return 0.0, "safe"
+        df = 1.0 if (is_urban and depth_m > 0.25) else (0.5 if depth_m > 0.1 else 0.0)
+        hr = depth_m * (velocity_m_s + 0.5) + df
+        if hr < 0.75:
+            category = "low"
+        elif hr < 1.25:
+            category = "moderate"
+        elif hr < 2.0:
+            category = "significant"
+        else:
+            category = "extreme"
+        return round(hr, 2), category
+
+    def compute_hydrodynamic_hazard_context(
+        self,
+        lat: float,
+        lon: float,
+        depth_m: float,
+        rainfall_intensity_mm_hr: float = 65.0,
+    ) -> Dict[str, Any]:
+        """
+        Provides comprehensive hydrodynamic hazard evaluation for a coordinate.
+        """
+        elev, runoff_c, basin, dist_ch = get_topographic_context(lat, lon)
+        slope = max(0.0005, min(0.02, elev / max(500.0, dist_ch)))
+        v = self.compute_mannings_flow_velocity(depth_m, slope_m_per_m=slope)
+        hr, cat = self.compute_hazard_rating(depth_m, v, is_urban=True)
+        scs_q = self.compute_scs_curve_number_runoff(
+            rainfall_mm=rainfall_intensity_mm_hr,
+            curve_number=min(95.0, 70.0 + runoff_c * 25.0)
+        )
+        return {
+            "ground_elevation_m": elev,
+            "runoff_coefficient": runoff_c,
+            "drainage_basin": basin,
+            "drainage_distance_m": dist_ch,
+            "estimated_slope": round(slope, 5),
+            "flow_velocity_m_s": v,
+            "scs_runoff_depth_mm": scs_q,
+            "hazard_rating": hr,
+            "hazard_category": cat,
+        }

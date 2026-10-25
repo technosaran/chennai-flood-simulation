@@ -1,0 +1,62 @@
+{
+  "source": "NASA POWER daily point API; CERES/MERRA-2 gridded reanalysis",
+  "source_url": "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=PRECTOTCORR%2CT2M%2CRH2M%2CWS10M%2CPS&community=AG&longitude=80.2707&latitude=13.0827&start=20010101&end=20251231&format=JSON&time-standard=UTC",
+  "documentation": "https://power.larc.nasa.gov/docs/services/api/temporal/daily/",
+  "downloaded_at": "2026-10-18T14:07:25.842666+00:00",
+  "requested_coordinates": [
+    13.0827,
+    80.2707
+  ],
+  "returned_geometry": {
+    "type": "Point",
+    "coordinates": [
+      80.271,
+      13.083,
+      48.95
+    ]
+  },
+  "header": {
+    "title": "NASA/POWER Source Native Resolution Daily Data",
+    "api": {
+      "version": "v2.10.0",
+      "name": "POWER Daily API"
+    },
+    "sources": [
+      "MERRA2",
+      "POWER"
+    ],
+    "fill_value": -999.0,
+    "time_standard": "UTC",
+    "start": "20010101",
+    "end": "20251231"
+  },
+  "parameters": {
+    "PRECTOTCORR": {
+      "units": "mm/day",
+      "longname": "Precipitation Corrected"
+    },
+    "T2M": {
+      "units": "C",
+      "longname": "Temperature at 2 Meters"
+    },
+    "RH2M": {
+      "units": "%",
+      "longname": "Relative Humidity at 2 Meters"
+    },
+    "WS10M": {
+      "units": "m/s",
+      "longname": "Wind Speed at 10 Meters"
+    },
+    "PS": {
+      "units": "kPa",
+      "longname": "Surface Pressure"
+    }
+  },
+  "rows": 9131,
+  "start": "2001-01-01",
+  "end": "2025-12-31",
+  "time_standard": "UTC",
+  "dataset_sha256": "358a6fc8a0532566787ffd5fc3e9534b4dff8ca4732b201917591776385fcfe3",
+  "raw_sha256": "7ec8695201e0473594e77dc22e99b79a1cc3ace7c70baaf3d94387e062acfb98",
+  "limitations": "Gridded weather reanalysis, not a local rain gauge or observed flood/demand labels."
+}

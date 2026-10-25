@@ -20,14 +20,16 @@ async def lifespan(app: FastAPI):
     evac_solver = EvacuationSolver(road_engine)
     
     # Initialize ML Predictor with graceful fallback
-    ml_predictor = None
-    if os.environ.get("ENABLE_ML", "1") == "1":
+    from backend.app.services.demand_predictor import DemandPredictor
+    ml_predictor = DemandPredictor()
+    if os.environ.get("ENABLE_ML", "0") == "1":
         try:
             from backend.app.services.ml_predictor import MLPredictor
-            ml_predictor = MLPredictor()
+            legacy_predictor = MLPredictor()
+            if legacy_predictor.is_loaded:
+                ml_predictor = legacy_predictor
         except Exception as e:
             print(f"ML Predictor fallback initialized: {e}")
-            ml_predictor = None
     
     supply_solver = SupplyChainSolver(road_engine, ml_predictor=ml_predictor)
     ai_advisor = AIAdvisorService(ml_predictor=ml_predictor)
@@ -38,7 +40,17 @@ async def lifespan(app: FastAPI):
     app.state.supply_solver = supply_solver
     app.state.ai_advisor = ai_advisor
     app.state.ml_predictor = ml_predictor
+    from backend.app.services.weather_predictor import WeatherPredictor
+    app.state.weather_predictor = WeatherPredictor()
+    from backend.app.services.realtime_data import RealtimeDataService
+    app.state.realtime_data = RealtimeDataService()
+    from backend.app.services.kaggle_weather import KaggleWeatherPredictor
+    app.state.kaggle_weather_predictor = KaggleWeatherPredictor()
     app.state.simulation_lock = RLock()
+    from backend.app.services.simulation_archive import SimulationArchive
+    app.state.simulation_archive = SimulationArchive()
+    from backend.app.services.reservoir_engine import ChennaiReservoirEngine
+    app.state.reservoir_engine = ChennaiReservoirEngine()
 
     yield
 
